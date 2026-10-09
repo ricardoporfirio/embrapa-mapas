@@ -1,0 +1,71 @@
+{# templates/login.html - trechos relevantes #}
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page__container">
+  <form class="auth" action="{{ url_for('auth.login') }}" method="post" id="login-form" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2 class="auth__title">Faça login para acessar as configurações</h2>
+
+    {# Aviso de área restrita #}
+    
+
+    <div class="auth__card card card--elevated">
+      <div class="auth__field">
+        <label for="email" class="form__label">E-mail</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          class="form__input"
+          autocomplete="email"
+          required
+        />
+      </div>
+
+      <div class="auth__field">
+        <label for="password" class="form__label">Senha</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          class="form__input"
+          autocomplete="current-password"
+          required
+        />
+      </div>
+
+      <div class="auth__actions">
+        <button type="submit" class="btn btn--primary btn--block">Fazer login</button>
+      </div>
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    (function () {
+      var form = document.getElementById('login-form');
+      if (form) {
+        form.addEventListener('submit', function (e) {
+          var email = document.getElementById('email').value.trim();
+          var password = document.getElementById('password').value;
+          if (!email || !password) {
+            e.preventDefault();
+            if (window.Alerts && Alerts.toast) {
+              Alerts.toast.warning('Informe e-mail e senha.');
+            }
+          }
+        });
+      }
+
+      // Se veio de área restrita, mostra também um toast (opcional)
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('reason') === 'restricted' && window.Alerts && Alerts.toast) {
+        Alerts.toast.warning('Área restrita: faça login para continuar.');
+      }
+    })();
+  </script>
+{% endblock %}

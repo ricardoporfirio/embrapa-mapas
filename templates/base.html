@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="csrf-token" content="{{ csrf_token() }}" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=1.0.2" />
+  {% block head %}{% endblock %}
+  <title>Gerador de Mapas - Embrapa</title>
+
+
+</head>
+<body>
+  <header class="header">
+    <div class="u-container header__top">
+      <img class="header__logo" src="{{ url_for('static', filename='images/marca-embrapa-colorida_216x91.png') }}" alt="Embrapa Gado de Leite" />
+      <img class="header__logo" src="{{ url_for('static', filename='images/Logomarca_CILEite.png') }}" alt="CILEite" />
+    </div>
+
+    <div class="banner">
+      <img class="banner__image" src="{{ url_for('static', filename='images/banner.jpg') }}" alt="Banner de Gerador de Mapas" />
+    </div>
+
+    {# inclui apenas o menu #}
+    {% include "includes/menu.html" %}
+  </header>
+  
+  <main class="page">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <p class="u-container" role="status">{{ message }}</p>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  
+  
+  {% include "includes/footer.html" %}
+
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,272 @@
+{# templates/setup/front.html #}
+{% extends "base.html" %}
+
+{% block head %}
+  {{ super() }}
+  <meta name="endpoint-run" content="{{ url_for('setup.run', culture=culture) }}">
+  <meta name="culture" content="{{ culture }}">
+  <meta name="current-type" content="{{ current_type or '' }}">
+
+  <style>
+    /* Grid 1→2 colunas para a área Bins/Colormap/Tasks (tasks ficam na direita) */
+    .form-two-col{
+      display:grid; grid-template-columns:1fr; gap:1rem;
+      align-items:start;
+    }
+    @media (min-width:980px){
+      .form-two-col{ grid-template-columns:1fr 1fr; }
+    }
+
+    /* Radios dos bins em UMA LINHA */
+    .bins-radio-row{
+      display:flex; gap:1.25rem; align-items:center;
+      flex-wrap:nowrap; overflow-x:auto; padding-bottom:.25rem;
+    }
+    .bins-radio-row label{ white-space:nowrap; }
+
+    /* Grids utilitários usados em outros pontos */
+    .checkbox-grid--2col{
+      display:grid; grid-template-columns:1fr 1fr; gap:.75rem 1.25rem;
+    }
+
+    /* Progress UI */
+    .progress-bar{background:#eee; border-radius:6px; height:12px; overflow:hidden}
+    .progress-bar > span{display:block; height:100%; width:0%}
+    .progress-label{font-size:.95rem; margin-bottom:.25rem}
+    .progress-numbers{font-size:.85rem; color:#444; margin-top:.25rem}
+    .group{margin:.5rem 0}
+    .group .progress-label{font-weight:600}
+  </style>
+{% endblock %}
+
+{% block content %}
+<section class="page__container">
+  <h1 class="page__title">
+    Painel de Configurações —
+    {% if culture == 'cow' %}Bovinos{% elif culture == 'goat' %}Caprinos{% elif culture == 'sheep' %}Ovinos{% else %}{{ culture|capitalize }}{% endif %}
+    {% if current_type %} — {{ valid_types[current_type].label }}{% endif %}
+  </h1>
+
+  <div class="card card--elevated form-card form-card--roomy">
+    <!-- ===== Anos ===== -->
+    <h2 class="page__subtitle">Anos disponíveis</h2>
+
+    <form id="setup-form" class="form" onsubmit="return false;">
+
+      {# ====== LAYOUT: coluna esquerda (select shapes) + direita (ações/checkboxes) ====== #}
+      <div class="years-layout">
+        <fieldset class="form__fieldset group" aria-labelledby="shapes-year-legend">
+          <legend id="shapes-year-legend" class="u-sronly">Selecionar ano dos shapes</legend>
+
+          {% set shapes_last_year = (shapes_available_years|max) if shapes_available_years else None %}
+          {% set selected_shapes_year = shapes_current_year or shapes_last_year %}
+
+          <label class="form__label" for="shapes-year">Ano dos shapes</label>
+          <div class="form__field-inline">
+            <select id="shapes-year" name="shapes_year" class="form__select">
+              {% for y in shapes_available_years %}
+                <option value="{{ y }}" {% if y == selected_shapes_year %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+            <small class="form__hint">Esse ano será usado para as geometrias (shapefiles).</small>
+          </div>
+        </fieldset>
+
+        <fieldset class="form__fieldset">
+          <legend class="u-sronly">Seleção de anos</legend>
+
+          <div class="form__actions form__actions--row years-actions">
+            <button type="button" class="btn btn--primary" id="btn-select-all">Selecionar todos</button>
+            <button type="button" class="btn" id="btn-clear-all">Remover seleção</button>
+          </div>
+
+          <div class="checkbox-grid checkbox-grid--roomy" id="grid-years">
+            {% for ano in available_years %}
+              <label class="form__label checkbox-label">
+                <input type="checkbox" name="years" value="{{ ano }}" {% if ano == last_year %}checked{% endif %}>
+                {{ ano }}
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+      </div>
+
+      <hr class="form__divider form__divider--lg" />
+
+      <!-- ===== GRID: ESQ = Bins | DIR = Colormap + Tasks ===== -->
+      <div class="form-two-col">
+        <!-- ===== Bins (esquerda) ===== -->
+        <section>
+          <h2 class="page__subtitle">Bins</h2>
+          <label for="basemap">Fundo do mapa</label>
+          <select id="basemap" class="form__select">
+            <option value="none">Sem fundo</option>
+            <option value="osm">OpenStreetMap</option>
+          </select>
+          <p class="form__hint">Sem fundo mostra os limites e dados temáticos. OpenStreetMap acrescenta ruas e localidades.</p>
+          <label class="form__label"><input type="checkbox" id="fixed-bins" checked> Usar os mesmos intervalos de legenda em todos os anos selecionados</label>
+          <fieldset class="form__fieldset" aria-labelledby="bins-legend">
+            <legend id="bins-legend" class="u-sronly">Configuração de bins</legend>
+
+            <!-- Radios em UMA LINHA -->
+            <div role="radiogroup" aria-label="Modo de criação de bins" class="bins-radio-row" style="margin-bottom:.5rem">
+              {% if culture == 'cow' %}
+              <label class="form__label checkbox-label">
+                <input type="radio" name="bin_mode" value="cileite"> Cileite
+              </label>
+              {% endif %}
+              {% if current_type %}
+              <label class="form__label checkbox-label">
+                <input type="radio" name="bin_mode" value="personal"> Meus presets
+              </label>
+              {% endif %}
+              <label class="form__label checkbox-label">
+                <input type="radio" name="bin_mode" value="automatic" checked>
+                Automático
+              </label>
+              <label class="form__label checkbox-label">
+                <input type="radio" name="bin_mode" value="equal_width">
+                Classes Iguais
+              </label>
+              <label class="form__label checkbox-label">
+                <input type="radio" name="bin_mode" value="manual">
+                Manual
+              </label>
+            </div>
+
+            <!-- Painel: AUTOMÁTICO (quantis sem opções) -->
+            {% if culture == 'cow' %}
+            <div id="bin-panel-cileite" class="card" style="padding:.75rem; margin-top:.5rem; display:none">
+              <p class="page__text" style="margin:0">Classes dos mapas publicados no <a href="https://www.cileite.com.br/content/leite-mapas" target="_blank" rel="noopener">Cileite</a>, por indicador, ano e estado. Macrorregiões usam as classes do Brasil. Para anos sem publicação, usa a referência anterior mais recente; antes da série, usa a primeira disponível. Este modo segue cada ano e substitui a opção de intervalos fixos.</p>
+            </div>
+            {% endif %}
+            <div id="bin-panel-automatic" class="card" style="padding:.75rem; margin-top:.5rem">
+              <p class="page__text" style="margin:0">
+                Os limites serão calculados automaticamente por quantis com base na distribuição dos dados.
+              </p>
+            </div>
+
+            <!-- Painel: CLASSES IGUAIS -->
+            <div id="bin-panel-equal" class="card" style="padding:.75rem; margin-top:.75rem; display:none">
+              <label class="form__label" for="equal-k">Número de classes</label>
+              <input id="equal-k" name="equal_k" type="number" min="2" step="1" value="5" class="form__input">
+              <p class="page__text" style="margin-top:.5rem">
+                As classes terão intervalos de mesma largura no domínio dos dados.
+              </p>
+            </div>
+
+            <!-- Painel: MANUAL -->
+            <div id="bin-panel-manual" class="card" style="padding:.75rem; margin-top:.75rem; display:none">
+              <label class="form__label" for="manual-breaks">Quebras (limites) manuais</label>
+              <input id="manual-breaks" name="manual_breaks" class="form__input"
+                     placeholder="Ex.: 50, 100, 200, 400">
+              <p class="page__text" style="margin-top:.5rem">
+                Informe uma lista <b>ordenada</b> de limites numéricos separados por vírgula.
+              </p>
+            </div>
+          </fieldset>
+          {% if current_type %}
+          <div class="card" id="personal-presets" style="padding:.75rem; margin-top:.75rem; display:none"
+               data-endpoint="{{ url_for('setup.personal_presets', culture=culture, rtype=current_type) }}"
+               data-delete-url="{{ url_for('setup.remove_personal_preset', preset_id='PRESET_ID') }}">
+            <h3>Meus presets</h3>
+            <p class="form__hint">Selecione um preset para usar nos mapas ou crie um novo informando o nome e os limites dos bins.</p>
+            <label for="personal-preset-list">Presets salvos</label>
+            <select id="personal-preset-list" class="form__select"><option value="">Selecione um preset</option></select>
+            <p id="personal-preset-preview" class="form__hint"></p>
+            <button type="button" class="btn" id="personal-preset-delete" disabled>Excluir</button>
+            <button type="button" class="btn" id="personal-preset-new">Novo preset</button>
+            <label for="personal-preset-name" style="display:block">Nome do preset</label>
+            <input id="personal-preset-name" class="form__input" maxlength="80" placeholder="Ex.: Classes do relatório anual">
+            <label for="personal-preset-breaks">Limites superiores dos bins</label>
+            <input id="personal-preset-breaks" class="form__input" placeholder="Ex.: 2000, 5000, 15000, 30000">
+            <p class="form__hint">Separe os limites por vírgula, em ordem crescente. Para decimais, use ponto (ex.: 0.5, 1.5, 3). A última classe inclui valores acima do maior limite.</p>
+            <button type="button" class="btn" id="personal-preset-save">Criar preset</button>
+            <p id="personal-preset-status" role="status" aria-live="polite"></p>
+          </div>
+          {% endif %}
+        </section>
+
+        <!-- ===== Colormap (direita) + Tasks ===== -->
+        <section>
+          <h2 class="page__subtitle">Colormap</h2>
+          <fieldset class="form__fieldset" aria-labelledby="cm-global-legend">
+            <legend id="cm-global-legend" class="u-sronly">Seleção de colormap global</legend>
+
+            <div class="actions-grid actions-grid--roomy">
+              <div class="action-row">
+                <span class="action-row__label">Mapa de cores (global)</span>
+                <span class="action-row__cm" id="cm-label-global">Blues</span>
+                <button type="button" class="btn" data-open-cm="global">Escolher colormap</button>
+              </div>
+            </div>
+            <p class="page__text" style="margin-top:.25rem">
+              O colormap selecionado será aplicado a todos os mapas.
+            </p>
+          </fieldset>
+        </section>
+      </div>
+
+      <!-- ===== CTA (abaixo do grid) ===== -->
+      <hr class="form__divider form__divider--lg" />
+      <div class="form-actions-grid">
+        <button id="btn-generate" type="button" class="btn btn--primary btn--block">Gerar mapas</button>
+        <div id="run-status" aria-live="polite" class="page__text" style="margin:.25rem 0 0; font-size:.95rem;"></div>
+      </div>
+
+      <div id="progress-wrap" style="display:none; margin-top:1rem">
+        <div class="progress-overall" style="margin-bottom: .75rem">
+          <div class="progress-label">Progresso total</div>
+          <div class="progress-bar"><span></span></div>
+          <div class="progress-numbers"></div>
+        </div>
+
+        <div id="progress-groups"></div>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% include "includes/modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/modal_colormap.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ajax.js') }}?v=6"></script>
+
+<script>
+
+
+  // ===== Troca de painéis de Bins (automático / equal_width / manual)
+  (function(){
+    const radios = document.querySelectorAll('input[name="bin_mode"]');
+    const paneAuto  = document.getElementById('bin-panel-automatic');
+    const paneEqual = document.getElementById('bin-panel-equal');
+    const paneManual= document.getElementById('bin-panel-manual');
+
+    function update(){
+      const value = document.querySelector('input[name="bin_mode"]:checked')?.value;
+      paneAuto.style.display   = (value === 'automatic')  ? '' : 'none';
+      paneEqual.style.display  = (value === 'equal_width')? '' : 'none';
+      paneManual.style.display = (value === 'manual')     ? '' : 'none';
+    }
+    radios.forEach(r => r.addEventListener('change', update));
+    update();
+  })();
+
+  // ===== Botões Selecionar todos / Remover seleção
+  (function(){
+    const grid = document.getElementById('grid-years');
+    const btnAll = document.getElementById('btn-select-all');
+    const btnClear = document.getElementById('btn-clear-all');
+    if(!grid || !btnAll || !btnClear) return;
+
+    btnAll.addEventListener('click', () => {
+      grid.querySelectorAll('input[type="checkbox"][name="years"]').forEach(cb => cb.checked = true);
+    });
+    btnClear.addEventListener('click', () => {
+      grid.querySelectorAll('input[type="checkbox"][name="years"]').forEach(cb => cb.checked = false);
+    });
+  })();
+</script>
+{% endblock %}

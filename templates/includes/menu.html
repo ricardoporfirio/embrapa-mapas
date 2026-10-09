@@ -1,0 +1,227 @@
+{# templates/includes/nav.html #}
+{% set current_path = request.path %}
+{% set current_ep   = request.endpoint %}
+{% set bp           = request.blueprint %}
+{% set user         = session.get('user') %}
+
+{% set home_path  = url_for('home.index') %}
+{% set interactive_maps_path  = url_for('home.interactive_maps') %}
+{% set static_maps_path  = url_for('home.static_maps') %}
+{% set team_path  = url_for('home.team') %}
+{% set login_path = url_for('home.login') %}
+
+{% set is_setup = (bp == 'setup') or current_path.startswith('/setup') %}
+{% set is_auth  = (bp == 'auth') or current_path.startswith('/login') %}
+
+{% macro is_active_path(path) -%}
+  {{ 'nav__link--active' if current_path == path else '' }}
+{%- endmacro %}
+
+{% macro setup_url(culture, rtype) -%}
+  {{ url_for('setup.front', culture=culture, rtype=rtype) }}
+{%- endmacro %}
+
+{% macro is_active_setup(culture, rtype) -%}
+  {%- set base = '/setup/' ~ culture ~ '/' ~ rtype -%}
+  {{ 'nav__link--active' if current_path.startswith(base) else '' }}
+{%- endmacro %}
+
+<nav class="nav" role="navigation" aria-label="Principal">
+  <div class="u-container nav__inner">
+    <button id="js-nav-toggle" class="nav__toggle" type="button" aria-controls="js-mobile-menu" aria-expanded="false">
+      <span class="u-sronly">Abrir menu</span>
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z"/></svg>
+    </button>
+
+    <div class="nav__links">
+      <a class="nav__link {{ is_active_path(home_path) }}" href="{{ home_path }}"
+         {% if current_path == home_path %}aria-current="page"{% endif %}>Home</a>
+
+         <a class="nav__link {{ is_active_path(interactive_maps_path) }}" href="{{ interactive_maps_path }}"
+         {% if current_path == interactive_maps_path %}aria-current="page"{% endif %}>Mapas Interativos</a>
+
+         <a class="nav__link {{ is_active_path(static_maps_path) }}" href="{{ static_maps_path }}"
+         {% if current_path == static_maps_path %}aria-current="page"{% endif %}>Mapas Estáticos</a>
+
+      <a class="nav__link {{ 'nav__link--active' if current_path.startswith(team_path) else '' }}" href="{{ team_path }}"
+         {% if current_path.startswith(team_path) %}aria-current="page"{% endif %}>Equipe</a>
+
+      {% if user %}
+        <div class="nav__dropdown {{ 'nav__dropdown--active' if is_setup else '' }}" data-dropdown>
+          <a
+            href="{{ url_for('setup.index') }}"
+            class="nav__link nav__link--dropdown {{ 'nav__link--active' if is_setup else '' }}"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="setup-dd"
+            data-dropdown-trigger
+          >
+            Configurações
+            <svg class="nav__caret" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20">
+              <path fill="currentColor" d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z"/>
+            </svg>
+          </a>
+
+          <div id="setup-dd" class="nav__dropdown-menu" role="menu" aria-label="Links de configuração" aria-hidden="true">
+            <a class="nav__dropdown-link {{ is_active_path(url_for('setup.index')) }}" role="menuitem" href="{{ url_for('setup.index') }}">Setup</a>
+
+            <!-- Bovinos (pai NÃO clicável) -->
+            <div class="nav__dropdown-item" role="none" data-submenu>
+              <button
+                type="button"
+                class="nav__dropdown-link nav__dropdown-link--has-sub is-parent"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                aria-controls="submenu-cow"
+              >
+                Bovinos
+                <svg class="nav__caret" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20">
+                  <path fill="currentColor" d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z"/>
+                </svg>
+              </button>
+              <div id="submenu-cow" class="nav__subpanel" role="menu" aria-label="Bovinos – métricas">
+                <div class="nav__subpanel-title">Bovinos</div>
+                <a role="menuitem" class="{{ is_active_setup('cow','milking') }}"             href="{{ setup_url('cow','milking') }}">Ordenha</a>
+                <a role="menuitem" class="{{ is_active_setup('cow','production') }}"          href="{{ setup_url('cow','production') }}">Produção</a>
+                <a role="menuitem" class="{{ is_active_setup('cow','milking-density') }}"    href="{{ setup_url('cow','milking-density') }}">Densidade de ordenha</a>
+                <a role="menuitem" class="{{ is_active_setup('cow','production-density') }}" href="{{ setup_url('cow','production-density') }}">Densidade de produção</a>
+                <a role="menuitem" class="{{ is_active_setup('cow','productivity') }}"       href="{{ setup_url('cow','productivity') }}">Produtividade</a>
+              </div>
+            </div>
+
+            <!-- Caprinos (pai NÃO clicável) -->
+            <div class="nav__dropdown-item" role="none" data-submenu>
+              <button
+                type="button"
+                class="nav__dropdown-link nav__dropdown-link--has-sub is-parent"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                aria-controls="submenu-goat"
+              >
+                Caprinos
+                <svg class="nav__caret" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20">
+                  <path fill="currentColor" d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z"/>
+                </svg>
+              </button>
+              <div id="submenu-goat" class="nav__subpanel" role="menu" aria-label="Caprinos – métricas">
+                <div class="nav__subpanel-title">Caprinos</div>
+                <a role="menuitem" class="{{ is_active_setup('goat','milking') }}"             href="{{ setup_url('goat','milking') }}">Ordenha</a>
+                <a role="menuitem" class="{{ is_active_setup('goat','production') }}"          href="{{ setup_url('goat','production') }}">Produção</a>
+                <a role="menuitem" class="{{ is_active_setup('goat','milking-density') }}"    href="{{ setup_url('goat','milking-density') }}">Densidade de ordenha</a>
+                <a role="menuitem" class="{{ is_active_setup('goat','production-density') }}" href="{{ setup_url('goat','production-density') }}">Densidade de produção</a>
+                <a role="menuitem" class="{{ is_active_setup('goat','productivity') }}"       href="{{ setup_url('goat','productivity') }}">Produtividade</a>
+              </div>
+            </div>
+
+            <!-- Ovinos (pai NÃO clicável) -->
+            <div class="nav__dropdown-item" role="none" data-submenu>
+              <button
+                type="button"
+                class="nav__dropdown-link nav__dropdown-link--has-sub is-parent"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                aria-controls="submenu-sheep"
+              >
+                Ovinos
+                <svg class="nav__caret" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20">
+                  <path fill="currentColor" d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z"/>
+                </svg>
+              </button>
+              <div id="submenu-sheep" class="nav__subpanel" role="menu" aria-label="Ovinos – métricas">
+                <div class="nav__subpanel-title">Ovinos</div>
+                <a role="menuitem" class="{{ is_active_setup('sheep','milking') }}"             href="{{ setup_url('sheep','milking') }}">Ordenha</a>
+                <a role="menuitem" class="{{ is_active_setup('sheep','production') }}"          href="{{ setup_url('sheep','production') }}">Produção</a>
+                <a role="menuitem" class="{{ is_active_setup('sheep','milking-density') }}"    href="{{ setup_url('sheep','milking-density') }}">Densidade de ordenha</a>
+                <a role="menuitem" class="{{ is_active_setup('sheep','production-density') }}" href="{{ setup_url('sheep','production-density') }}">Densidade de produção</a>
+                <a role="menuitem" class="{{ is_active_setup('sheep','productivity') }}"       href="{{ setup_url('sheep','productivity') }}">Produtividade</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <a class="nav__link {{ 'nav__link--active' if is_auth else '' }}" href="{{ login_path }}"
+           {% if is_auth %}aria-current="page"{% endif %}>Logar</a>
+      {% endif %}
+
+      {% if user %}
+        <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="nav__link nav__link--logout" style="border:0;background:transparent;font:inherit;cursor:pointer">Sair</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Mobile -->
+  <div id="js-mobile-menu" class="nav__menu" hidden>
+    <div class="nav__menu-group">
+      <a class="nav__menu-link {{ is_active_path(home_path) }}" href="{{ home_path }}"
+         {% if current_path == home_path %}aria-current="page"{% endif %}>Home</a>
+
+         <a class="nav__menu-link {{ is_active_path(interactive_maps_path) }}" href="{{ interactive_maps_path }}"
+         {% if current_path == interactive_maps_path %}aria-current="page"{% endif %}>Mapas Interativos</a>
+
+         <a class="nav__menu-link {{ is_active_path(static_maps_path) }}" href="{{ static_maps_path }}"
+         {% if current_path == static_maps_path %}aria-current="page"{% endif %}>Mapas Estáticos</a>
+
+      <a class="nav__menu-link {{ 'nav__link--active' if current_path.startswith(team_path) else '' }}" href="{{ team_path }}"
+         {% if current_path.startswith(team_path) %}aria-current="page"{% endif %}>Equipe</a>
+
+      {% if user %}
+        <div class="nav__menu-section">
+          <div class="nav__menu-title">Configurações</div>
+
+          <a class="nav__menu-sublink {{ is_active_path(url_for('setup.index')) }}" href="{{ url_for('setup.index') }}">Setup</a>
+
+          <!-- Bovinos -->
+          <details class="nav__accordion">
+            <summary class="nav__menu-link--parent">
+              <span>Bovinos</span>
+              <svg class="nav__caret" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z"/></svg>
+            </summary>
+            <div class="nav__submenu nav__submenu--lvl2" role="group" aria-label="Bovinos – métricas">
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('cow','milking') }}"             href="{{ setup_url('cow','milking') }}">Ordenha</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('cow','production') }}"          href="{{ setup_url('cow','production') }}">Produção</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('cow','milking-density') }}"    href="{{ setup_url('cow','milking-density') }}">Densidade de ordenha</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('cow','production-density') }}" href="{{ setup_url('cow','production-density') }}">Densidade de produção</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('cow','productivity') }}"       href="{{ setup_url('cow','productivity') }}">Produtividade</a>
+            </div>
+          </details>
+
+          <!-- Caprinos -->
+          <details class="nav__accordion">
+            <summary class="nav__menu-link--parent">
+              <span>Caprinos</span>
+              <svg class="nav__caret" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1 0-1.4z"/></svg>
+            </summary>
+            <div class="nav__submenu nav__submenu--lvl2" role="group" aria-label="Caprinos – métricas">
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('goat','milking') }}"             href="{{ setup_url('goat','milking') }}">Ordenha</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('goat','production') }}"          href="{{ setup_url('goat','production') }}">Produção</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('goat','milking-density') }}"    href="{{ setup_url('goat','milking-density') }}">Densidade de ordenha</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('goat','production-density') }}" href="{{ setup_url('goat','production-density') }}">Densidade de produção</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('goat','productivity') }}"       href="{{ setup_url('goat','productivity') }}">Produtividade</a>
+            </div>
+          </details>
+
+          <!-- Ovinos -->
+          <details class="nav__accordion">
+            <summary class="nav__menu-link--parent">
+              <span>Ovinos</span>
+              <svg class="nav__caret" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1 0-1.4z"/></svg>
+            </summary>
+            <div class="nav__submenu nav__submenu--lvl2" role="group" aria-label="Ovinos – métricas">
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('sheep','milking') }}"             href="{{ setup_url('sheep','milking') }}">Ordenha</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('sheep','production') }}"          href="{{ setup_url('sheep','production') }}">Produção</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('sheep','milking-density') }}"    href="{{ setup_url('sheep','milking-density') }}">Densidade de ordenha</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('sheep','production-density') }}" href="{{ setup_url('sheep','production-density') }}">Densidade de produção</a>
+              <a class="nav__menu-sublink nav__menu-sublink--leaf {{ is_active_setup('sheep','productivity') }}"       href="{{ setup_url('sheep','productivity') }}">Produtividade</a>
+            </div>
+          </details>
+
+          <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="nav__menu-link nav__menu-link--logout" style="border:0;background:transparent;font:inherit;cursor:pointer">Sair</button></form>
+        </div>
+      {% else %}
+        <a class="nav__menu-link {{ 'nav__link--active' if is_auth else '' }}" href="{{ login_path }}"
+           {% if is_auth %}aria-current="page"{% endif %}>Logar</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+

@@ -1,0 +1,356 @@
+{# templates/interactive_maps.html #}
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page__container page">
+  <h1 class="page__title">Mapas Interativos</h1>
+
+  <div class="card form-card form-card--roomy">
+    <form id="maps-form" class="form-two-col" autocomplete="off">
+      <div class="group">
+        <label for="sel-category" class="form__label">Categoria</label>
+        <select id="sel-category" class="form__select" required>
+          <option value="" selected disabled>Escolha uma categoria…</option>
+          {# Fallback server (JS capitaliza a exibição) #}
+          {% for category in files.keys() %}
+            <option value="{{ category }}">{{ category }}</option>
+          {% endfor %}
+        </select>
+        <p class="form__hint">Ex.: cabras, ovelhas…</p>
+      </div>
+
+      <div class="group">
+        <label for="sel-subcategory" class="form__label">Subcategoria</label>
+        <select id="sel-subcategory" class="form__select" disabled required>
+          <option value="" selected disabled>Selecione uma categoria primeiro…</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label for="sel-year" class="form__label">Ano</label>
+        <select id="sel-year" class="form__select" disabled required>
+          <option value="" selected disabled>Selecione uma subcategoria primeiro…</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label for="sel-file" class="form__label">Arquivo</label>
+        <select id="sel-file" class="form__select" disabled required>
+          <option value="" selected disabled>Selecione um ano primeiro…</option>
+        </select>
+        <p class="form__hint">Ex.: AC, BA, SP…</p>
+      </div>
+    </form>
+  </div>
+
+  <!-- Resumo + Timeline -->
+  <div id="selection-summary" class="card form-card form-card--roomy" style="display:none;">
+    <h2 class="page__subtitle">Sua seleção</h2>
+    <p id="selection-text" class="page__text"></p>
+
+    <hr class="form__divider form__divider--lg">
+
+    <h3 class="page__subtitle">Linha do tempo</h3>
+    <div id="timeline" class="timeline"></div>
+
+    <div id="warn-file-missing" class="alert alert--warn" style="display:none; margin-top:12px;">
+      O arquivo selecionado não existe para o ano escolhido. Selecione um arquivo disponível neste ano.
+    </div>
+  </div>
+
+  <!-- Visualização do mapa -->
+  <div id="map-view" class="card form-card form-card--roomy" style="display:none;">
+    <h2 class="page__subtitle">Mapa</h2>
+    <iframe id="map-frame" class="map-frame" src="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+
+  <style>
+    /* ===== Timeline ===== */
+    .timeline { width:100%; }
+    .timeline__wrap{
+      display:flex; flex-wrap:wrap; gap:.5rem;
+      padding:.25rem 0;
+    }
+    .timeline__item{
+      appearance:none;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      padding:.4rem .6rem;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:600;
+      box-shadow:0 1px 0 rgba(0,0,0,.02);
+      transition:border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+    }
+    .timeline__item:hover{ border-color:var(--c-primary); box-shadow:0 0 0 4px rgba(3,105,161,.12); }
+    .timeline__item.is-selected{
+      border-color:var(--c-brand);
+      background:var(--c-accent);
+    }
+
+    /* ===== Iframe (mapa) ===== */
+    .map-frame{
+      width:100%;
+      height:70vh;              /* ajuste conforme desejar */
+      border:1px solid #e5e7eb;
+      border-radius:12px;
+      background:#fff;
+    }
+
+    /* ===== Alertas ===== */
+    .alert{
+      border:1px solid #f59e0b; background:#fff7ed; color:#92400e;
+      padding:.625rem .75rem; border-radius:10px; font-weight:600;
+    }
+  </style>
+
+  <script>
+    /* =========================
+       Dados do backend
+    ========================== */
+    const DATA = {{ files|tojson }};
+
+    /* =========================
+       Elementos
+    ========================== */
+    const selCategory = document.getElementById('sel-category');
+    const selSubcat   = document.getElementById('sel-subcategory');
+    const selYear     = document.getElementById('sel-year');
+    const selFile     = document.getElementById('sel-file');
+
+    const summaryBox    = document.getElementById('selection-summary');
+    const selectionText = document.getElementById('selection-text');
+    const warnMissing   = document.getElementById('warn-file-missing');
+
+    const mapView  = document.getElementById('map-view');
+    const mapFrame = document.getElementById('map-frame');
+
+    /* =========================
+       Caminho base dos arquivos
+       -> se não estiver em static, troque BASE_PATH para "/mapas/"
+    ========================== */
+    const STATIC_BASE = "{{ url_for('static', filename='') }}";   // "/static/"
+    const BASE_PATH = "/mapas/";                  // "/static/mapas/"
+
+    /* =========================
+       Helpers
+    ========================== */
+    function toTitleCase(str) {
+      return String(str)
+        .toLowerCase()
+        .split(/[\s_\-]+/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    }
+
+    function stripHtmlExt(name) {
+      return String(name).replace(/\.html?$/i, '');
+    }
+
+    function ensureHtmlExt(name){
+      return /\.html?$/i.test(name) ? name : (name + ".html");
+    }
+
+    function resetSelect(select, placeholder, disable = true) {
+      select.innerHTML = '';
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = placeholder;
+      opt.disabled = true;
+      opt.selected = true;
+      select.appendChild(opt);
+      select.disabled = !!disable;
+    }
+
+    function fillSelectLabelValue(select, values, {transform = (v)=>v, valueAs = (v)=>v} = {}) {
+      for (const v of values) {
+        const opt = document.createElement('option');
+        opt.value = valueAs(v);
+        opt.textContent = transform(v);
+        select.appendChild(opt);
+      }
+      select.disabled = values.length === 0;
+    }
+
+    function buildFileUrl(category, subcategory, year, file){
+      if (!category || !subcategory || !year || !file) return "";
+      const safeFile = ensureHtmlExt(file);
+      return `${BASE_PATH}${encodeURIComponent(category)}/${encodeURIComponent(subcategory)}/${encodeURIComponent(year)}/${encodeURIComponent(safeFile)}`;
+    }
+
+    function renderTimeline(years, selectedYear) {
+      const timelineEl = document.getElementById('timeline');
+      timelineEl.innerHTML = '';
+      if (!years || years.length === 0) {
+        timelineEl.textContent = 'Sem anos disponíveis.';
+        return;
+      }
+      const sorted = years.map(Number).filter(n => !Number.isNaN(n)).sort((a,b)=>a-b);
+      const wrap = document.createElement('div');
+      wrap.className = 'timeline__wrap';
+      for (const y of sorted) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'timeline__item';
+        item.textContent = y;
+        if (String(y) === String(selectedYear)) item.classList.add('is-selected');
+        item.addEventListener('click', () => {
+          selYear.value = String(y);
+          selYear.dispatchEvent(new Event('change'));
+        });
+        wrap.appendChild(item);
+      }
+      timelineEl.appendChild(wrap);
+    }
+
+    function updateSummary() {
+      const cat = selCategory.value;
+      const sub = selSubcat.value;
+      const yr  = selYear.value;
+      const fl  = selFile.value;
+
+      if (!cat) { summaryBox.style.display = 'none'; return; }
+
+      const catLabel  = cat ? toTitleCase(cat) : '';
+      const subLabel  = sub ? toTitleCase(sub) : '';
+      const yrLabel   = yr  ? yr : '';
+      const fileLabel = fl  ? toTitleCase(stripHtmlExt(fl)) : '';
+
+      const parts = [];
+      if (catLabel)  parts.push(`Categoria: <b>${catLabel}</b>`);
+      if (subLabel)  parts.push(`Subcategoria: <b>${subLabel}</b>`);
+      if (yrLabel)   parts.push(`Ano: <b>${yrLabel}</b>`);
+      if (fileLabel) parts.push(`Arquivo: <b>${fileLabel}</b>`);
+
+      selectionText.innerHTML = parts.join(' · ');
+      summaryBox.style.display = 'block';
+
+      // Timeline: se há subcategoria, usa anos dessa subcat; senão, todos da categoria
+      let years = [];
+      if (cat && sub && DATA[cat]?.[sub]) {
+        years = Object.keys(DATA[cat][sub] || {});
+      } else if (cat && DATA[cat]) {
+        const set = new Set();
+        for (const sc of Object.values(DATA[cat])) {
+          for (const y of Object.keys(sc || {})) set.add(y);
+        }
+        years = Array.from(set);
+      }
+      renderTimeline(years, yr);
+    }
+
+    function updateMapFrame(){
+      const category = selCategory.value;
+      const subcat   = selSubcat.value;
+      const year     = selYear.value;
+      const file     = selFile.value;
+      const url = buildFileUrl(category, subcat, year, file);
+      if (url){
+        mapFrame.src = url;
+        mapView.style.display = 'block';
+      } else {
+        mapFrame.src = "";
+        mapView.style.display = 'none';
+      }
+    }
+
+    /* =========================
+       Handlers
+    ========================== */
+    function onCategoryChange() {
+      const category = selCategory.value;
+      const subcats = category && DATA[category] ? Object.keys(DATA[category]) : [];
+
+      resetSelect(selSubcat, 'Escolha uma subcategoria…', false);
+      resetSelect(selYear, 'Selecione uma subcategoria primeiro…', true);
+      resetSelect(selFile, 'Selecione um ano primeiro…', true);
+      warnMissing.style.display = 'none';
+
+      // capitaliza categorias renderizadas pelo servidor
+      Array.from(selCategory.options).forEach(opt => { if (opt.value) opt.textContent = toTitleCase(opt.textContent); });
+
+      fillSelectLabelValue(selSubcat, subcats, { transform: (v)=>toTitleCase(v) });
+
+      updateSummary();
+      updateMapFrame();
+    }
+
+    function onSubcategoryChange() {
+      const category = selCategory.value;
+      const subcat   = selSubcat.value;
+      const years = category && subcat && DATA[category]?.[subcat]
+        ? Object.keys(DATA[category][subcat]).sort()
+        : [];
+
+      resetSelect(selYear, 'Escolha um ano…', false);
+      resetSelect(selFile, 'Selecione um ano primeiro…', true);
+      warnMissing.style.display = 'none';
+
+      fillSelectLabelValue(selYear, years);
+
+      updateSummary();
+      updateMapFrame();
+    }
+
+    function onYearChange() {
+      const category = selCategory.value;
+      const subcat   = selSubcat.value;
+      const year     = selYear.value;
+
+      const prevFileValue = selFile.value; // manter o mesmo arquivo
+      const files = category && subcat && year && DATA[category]?.[subcat]?.[year]
+        ? DATA[category][subcat][year]
+        : [];
+
+      // Recria opções de arquivo para o novo ano, mas tenta preservar a seleção
+      resetSelect(selFile, 'Escolha um arquivo…', false);
+      fillSelectLabelValue(
+        selFile,
+        files,
+        {
+          transform: (v)=>toTitleCase(stripHtmlExt(v)),
+          valueAs:   (v)=>v
+        }
+      );
+
+      // Se o arquivo anterior existe neste ano, mantém selecionado; senão, avisa
+      if (prevFileValue && files.includes(prevFileValue)) {
+        selFile.value = prevFileValue;
+        warnMissing.style.display = 'none';
+      } else {
+        warnMissing.style.display = prevFileValue ? 'block' : 'none';
+      }
+
+      updateSummary();
+      updateMapFrame();
+    }
+
+    function onFileChange() {
+      warnMissing.style.display = 'none';
+      updateSummary();
+      updateMapFrame();
+    }
+
+    /* =========================
+       Inicialização
+    ========================== */
+    selCategory.addEventListener('change', onCategoryChange);
+    selSubcat.addEventListener('change', onSubcategoryChange);
+    selYear.addEventListener('change', onYearChange);
+    selFile.addEventListener('change', onFileChange);
+
+    // Capitaliza as opções de categoria (renderizadas pelo server)
+    Array.from(selCategory.options).forEach(opt => { if (opt.value) opt.textContent = toTitleCase(opt.textContent); });
+
+    resetSelect(selSubcat, 'Selecione uma categoria primeiro…', true);
+    resetSelect(selYear, 'Selecione uma subcategoria primeiro…', true);
+    resetSelect(selFile, 'Selecione um ano primeiro…', true);
+    summaryBox.style.display = 'none';
+    mapView.style.display = 'none';
+  </script>
+{% endblock %}

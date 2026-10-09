@@ -1,0 +1,277 @@
+{# templates/setup/guia.html #}
+{% extends "base.html" %}
+
+{% block head %}
+  {{ super() }}
+  <style>
+    .guide-layout{ display:grid; grid-template-columns: 1fr; gap: 1.5rem; align-items:start; }
+    @media (min-width: 1080px){ .guide-layout{ grid-template-columns: 280px 1fr; } }
+    .toc{ position: sticky; top: 1.25rem; }
+    .toc .card__content{ padding: .75rem 1rem; }
+    .toc__title{ font-weight:700; margin:.25rem 0 .5rem; font-size:1.05rem; }
+    .toc__list{ list-style:none; padding:0; margin:0; display:grid; gap:.25rem; }
+    .toc__list a{ text-decoration:none; color:inherit; padding:.25rem; border-radius:6px; display:block; }
+    .toc__list a:hover{ background: rgba(0,0,0,.05); }
+    .toc__list a.is-active{ font-weight:700; outline:2px solid rgba(0,0,0,.08); }
+    .guide h2.page__subtitle{ margin-top:.75rem; }
+    .guide .lead{ font-size:1.05rem; color:#333; margin:.25rem 0 1rem; }
+    .steps{ counter-reset: step; display:grid; gap:1rem; }
+    .step{ display:grid; gap:.35rem; border-left:4px solid var(--accent,#2b6cb0); padding-left:.75rem; }
+    .step__title{ font-weight:700; }
+    .step__hint{ color:#444; font-size:.95rem; }
+    pre.code{ background:#0e1116; color:#f1f5f9; border-radius:8px; padding:.75rem .9rem; overflow:auto; font-size:.9rem; line-height:1.5; position:relative; }
+    .code__copy{ position:absolute; top:8px; right:8px; font-size:.85rem; border:0; border-radius:6px; padding:.25rem .5rem; cursor:pointer; }
+    .table{ width:100%; border-collapse:collapse; font-size:.95rem; }
+    .table th,.table td{ border-bottom:1px solid #eee; padding:.5rem .6rem; text-align:left; }
+    .table th{ background:#fafafa; font-weight:700; }
+    .callout{ border-left:4px solid #999; background:#f7f7f7; padding:.75rem .9rem; border-radius:6px; }
+    .callout--info{ border-left-color:#2b6cb0; background:#f0f5ff; }
+    .callout--success{ border-left-color:#2f855a; background:#f0fff4; }
+    .callout--warning{ border-left-color:#b7791f; background:#fffaf0; }
+    .callout--danger{ border-left-color:#c53030; background:#fff5f5; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<section class="page__container guide">
+  <h1 class="page__title">Guia do Gerador de Mapas & Dashboards</h1>
+  <p class="lead">
+    Esta página explica como configurar e executar o seu gerador para criar mapas e dashboards
+    para <b>Bovinos</b>, <b>Caprinos</b> e <b>Ovinos</b> usando o painel de configurações.
+  </p>
+
+  <div class="guide-layout">
+    <!-- TOC -->
+    <aside class="toc">
+      <div class="card card--elevated">
+        <div class="card__content">
+          <div class="toc__title">Navegação</div>
+          <ul class="toc__list" id="toc">
+            <li><a href="#visao-geral">Visão geral</a></li>
+            <li><a href="#pre-requisitos">Pré-requisitos</a></li>
+            <li><a href="#passo-a-passo">Passo a passo</a></li>
+            <li><a href="#dashboards">Como ler os dashboards</a></li>
+            <li><a href="#estrutura-dados">Estrutura dos dados</a></li>
+            <li><a href="#erros-comuns">Erros comuns</a></li>
+            <li><a href="#faq">FAQ</a></li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTEÚDO -->
+    <div class="content">
+      <div id="visao-geral" class="card card--elevated form-card form-card--roomy">
+        <h2 class="page__subtitle">Visão geral</h2>
+        <p>
+          O gerador cria mapas temáticos e dashboards a partir de arquivos CSV já estruturados.
+          Você escolhe os <b>anos</b>, configura os <b>bins</b> (classes), define um <b>colormap</b> global e clica em <b>Gerar mapas</b>.
+        </p>
+        <div class="callout callout--info" style="margin-top:.5rem">
+          Dica: os shapes (geometria) utilizam o <b>ano de shapes</b> selecionado,
+          enquanto os dados podem conter vários anos marcados nas caixas à direita.
+        </div>
+        <div class="form__actions" style="margin-top:1rem">
+          <!-- SOLUÇÃO RÁPIDA: link direto, sem 'globals' -->
+          <a href="{{ url_for('setup.front', culture='cow') }}" class="btn btn--primary">
+            Abrir painel de configurações
+          </a>
+        </div>
+      </div>
+
+      <div id="pre-requisitos" class="card card--elevated form-card form-card--roomy">
+        <h2 class="page__subtitle">Pré-requisitos</h2>
+        <ul class="steps">
+          <li class="step">
+            <div class="step__title">1) Estrutura de diretórios</div>
+            <div class="step__hint">Os dados ficam em <code>dataframes/{categoria}/{tipo}/{nível}/*.csv</code>.</div>
+            <pre class="code"><button class="code__copy" data-copy>Copiar</button>dataframes/
+  vacas/
+    ordenha/
+      country/*.csv
+      region/*.csv
+      state/*.csv
+    producao/
+      ...
+  cabras/
+    producao/
+      municipality/*.csv
+  ovelhas/
+    produtividade/
+      municipality/*.csv
+</pre>
+          </li>
+          <li class="step">
+            <div class="step__title">2) Colunas esperadas</div>
+            <div class="step__hint">Cada CSV deve conter as colunas abaixo:</div>
+            <table class="table">
+              <thead><tr><th>Coluna</th><th>Descrição</th></tr></thead>
+              <tbody>
+                <tr><td><code>territory</code></td><td>Nome do país/região/estado/município (usado nos rótulos).</td></tr>
+                <tr><td><code>abbrev_state</code></td><td>UF (opcional; se presente em <em>state</em>, rótulo vira “UF – Nome”).</td></tr>
+                <tr><td><code>territory_code</code></td><td>Código (opcional, para referência).</td></tr>
+                <tr><td><code>value</code></td><td>Valor numérico usado nos mapas/gráficos.</td></tr>
+                <tr><td><code>title</code>, <code>unit</code></td><td>Metadados (opcional).</td></tr>
+              </tbody>
+            </table>
+            <div class="callout callout--warning" style="margin-top:.5rem">
+              O <b>ano</b> é extraído do nome do arquivo (ex.: <code>.../state/2022_estado.csv</code>).
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div id="passo-a-passo" class="card card--elevated form-card form-card--roomy">
+        <h2 class="page__subtitle">Passo a passo</h2>
+        <ol class="steps">
+          <li class="step">
+            <div class="step__title">Escolha a cultura e o tipo</div>
+            <div class="step__hint">
+              No topo do painel, selecione <b>Bovinos</b>, <b>Caprinos</b> ou <b>Ovinos</b> e o tipo (Ordenha, Produção, etc.).
+            </div>
+          </li>
+          <li class="step">
+            <div class="step__title">Selecione os anos</div>
+            <div class="step__hint">
+              Escolha o <b>ano dos shapes</b> (para as geometrias) e marque os <b>anos de dados</b> que deseja incluir.
+              Use “Selecionar todos” / “Remover seleção” para agilizar.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step__title">Defina os bins</div>
+            <div class="step__hint">
+              <b>Automático</b> (quantis), <b>Classes Iguais</b> (defina k) ou <b>Manual</b> (informe quebras ordenadas).
+            </div>
+          </li>
+          <li class="step">
+            <div class="step__title">Escolha o colormap</div>
+            <div class="step__hint">O colormap global será aplicado a todos os mapas gerados.</div>
+          </li>
+          <li class="step">
+            <div class="step__title">Gerar</div>
+            <div class="step__hint">
+              Clique em <b>Gerar mapas</b>. A barra de progresso mostra o andamento total e por grupos.
+            </div>
+          </li>
+        </ol>
+        <div class="callout callout--success" style="margin-top:.5rem">
+          Se não houver dados para os filtros selecionados, o sistema exibirá
+          <b>“Não há dados para gerar os dashboards...”</b>.
+        </div>
+      </div>
+
+      <div id="dashboards" class="card card--elevated form-card form-card--roomy">
+        <h2 class="page__subtitle">Como ler os dashboards</h2>
+        <ul class="steps">
+          <li class="step">
+            <div class="step__title">Bovinos (cow)</div>
+            <div class="step__hint">
+              Exibimos séries temporais para <b>country</b>, <b>region</b> e <b>state</b>, uma linha por entidade (sem somas).
+              A legenda de <b>region/state</b> aparece à direita. Os nomes vêm de <code>territory</code> (ou <code>UF – Nome</code> em estados).
+            </div>
+          </li>
+          <li class="step">
+            <div class="step__title">Caprinos/Ovinos</div>
+            <div class="step__hint">
+              Mostramos um <b>Top N por ano</b> (barras horizontais) em <b>municipality</b>, com um seletor para escolher a quantidade a exibir.
+              A altura do gráfico se adapta ao número de barras.
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div id="estrutura-dados" class="card card--elevated form-card form-card--roomy">
+        <h2 class="page__subtitle">Estrutura dos dados</h2>
+        <p>Exemplo de linha em um CSV:</p>
+        <pre class="code"><button class="code__copy" data-copy>Copiar</button>abbrev_state,territory_code,territory,value,title,unit
+SP,35,São Paulo,12345.67,Produção de leite,"litros"
+</pre>
+        <p>Os arquivos podem estar repetidos por entidade/ano; o backend agrega por <code>(year, entity)</code> quando necessário.</p>
+      </div>
+
+      <div id="erros-comuns" class="card card--elevated form-card form-card--roomy">
+        <h2 class="page__subtitle">Erros comuns &amp; soluções</h2>
+        <ul class="steps">
+          <li class="step">
+            <div class="step__title">“Unexpected token NaN…” no front</div>
+            <div class="step__hint">
+              Convertemos <code>NaN/NaT</code> para <code>null</code> antes do <em>jsonify</em>. Se aparecer, verifique se a rota está usando <code>df.replace({np.nan: None})</code>.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step__title">Sem rótulos corretos (Série 1, Série 2…)</div>
+            <div class="step__hint">
+              Garanta a coluna <code>territory</code> em todos os níveis.
+              Em <em>state</em>, se houver <code>abbrev_state</code>, o rótulo vira <code>UF – Nome</code>.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step__title">Nenhum gráfico exibido</div>
+            <div class="step__hint">
+              Verifique se existe pelo menos um valor numérico em <code>value</code> para os anos/níveis selecionados e se o ano está presente no nome do arquivo CSV.
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div id="faq" class="card card--elevated form-card form-card--roomy">
+        <h2 class="page__subtitle">FAQ</h2>
+        <details>
+          <summary>Posso usar colormaps diferentes por mapa?</summary>
+          <p>No painel atual, o colormap é global. É possível estender o modal para selecionar variações por nível.</p>
+        </details>
+        <details>
+          <summary>Como ordenar os municípios no Top N?</summary>
+          <p>Os valores são ordenados do maior para o menor automaticamente antes de aplicar o corte <em>Top N</em>.</p>
+        </details>
+        <details>
+          <summary>Os dados aceitam separador decimal com vírgula?</summary>
+          <p>Padronize os CSVs com ponto decimal (<code>.</code>) ou normalize antes de carregar.</p>
+        </details>
+      </div>
+
+      <div class="form__actions" style="margin-top:1rem">
+        <!-- SOLUÇÃO RÁPIDA: link direto, sem 'globals' -->
+        <a href="{{ url_for('setup.front', culture='cow') }}" class="btn btn--primary">
+          Abrir painel de configurações
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // TOC ativo conforme rolagem
+  (function(){
+    const links = Array.from(document.querySelectorAll('#toc a'));
+    const sections = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+    function onScroll(){
+      const y = window.scrollY + 120;
+      let active = null;
+      for (const sec of sections){
+        if (sec.offsetTop <= y) active = sec.id;
+      }
+      links.forEach(a => a.classList.toggle('is-active', a.getAttribute('href') === '#' + active));
+    }
+    document.addEventListener('scroll', onScroll, {passive:true});
+    onScroll();
+  })();
+
+  // Botão "Copiar" nos blocos de código
+  (function(){
+    document.querySelectorAll('[data-copy]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pre = btn.closest('pre');
+        const text = pre ? pre.textContent.replace(/^Copiar\s*/,'') : '';
+        navigator.clipboard.writeText(text).then(()=>{
+          const prev = btn.textContent;
+          btn.textContent = 'Copiado!';
+          setTimeout(()=> btn.textContent = prev, 1200);
+        });
+      });
+    });
+  })();
+</script>
+{% endblock %}

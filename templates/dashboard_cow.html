@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page__container page">
+    <h1 class="page__title">Dashboards — Vacas</h1>
+
+    <form action="" method="get" class="card form-card form-card--roomy form--inline" aria-label="Gerar dashboards">
+        <fieldset class="form__fieldset">
+            <legend class="u-sronly">Filtros do dashboard</legend>
+
+            <label for="category" class="u-sronly">Categoria</label>
+            <select id="category" name="category" class="form__select" required>
+                <option value="" selected disabled>Categoria…</option>
+                <option value="cow">Vacas</option>
+                <option value="goat">Cabras</option>
+                <option value="sheep">Ovelhas</option>
+            </select>
+
+            <label for="style" class="u-sronly">Tipo</label>
+            <select id="style" name="style" class="form__select" required>
+                <option value="" selected disabled>Tipo…</option>
+                <option value="milking">Ordenha</option>
+                <option value="production">Produção</option>
+                <option value="milking_density">Densidade de ordenha</option>
+                <option value="production_density">Densidade de produção</option>
+                <option value="productivity">Produtividade</option>
+            </select>
+
+            <!-- Aparece somente para goat/sheep -->
+            <label for="topN" class="u-sronly">Quantidade (Top N)</label>
+            <select id="topN" name="topN" class="form__select" style="display:none">
+                <option value="5">Top 5</option>
+                <option value="10" selected>Top 10</option>
+                <option value="15">Top 15</option>
+                <option value="20">Top 20</option>
+                <option value="30">Top 30</option>
+                <option value="50">Top 50</option>
+            </select>
+
+            <button type="submit" class="btn btn--primary">Gerar</button>
+            <button type="reset" class="btn">Limpar</button>
+        </fieldset>
+    </form>
+
+    <!-- Container onde os gráficos serão inseridos -->
+    <div id="dashboards" class="u-mt-32"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const form = document.querySelector("form");
+    const dashboards = document.getElementById("dashboards");
+    const pageTitle = document.querySelector(".page__title");
+    const categoryEl = document.getElementById("category");
+    const styleEl = document.getElementById("style");
+    const topNEl = document.getElementById("topN");
+
+    let chartInstances = [];
+
+    const COLORS = {
+        linePalette: [
+            "#36A2EB","#FF6384","#FF9F40","#4BC0C0","#9966FF",
+            "#FFCD56","#C9CBCF","#00C88C","#969696","#785AC8"
+        ],
+        barFill: "rgba(75, 192, 192, 0.4)",
+        barBorder: "rgba(75, 192, 192, 1)"
+    };
+
+    // Alturas (px)
+    const HEIGHTS = {
+        line: 560,
+        barMin: 560,
+        barPerItem: 44,
+        barPadding: 160
+    };
+
+    function clearDashboards() {
+        chartInstances.forEach(ch => { try { ch.destroy(); } catch(e){} });
+        chartInstances = [];
+        dashboards.innerHTML = "";
+    }
+
+    function makeSection(title) {
+        const section = document.createElement("section");
+        section.className = "u-mt-24";
+        section.style.display = "grid";
+        section.style.gridTemplateColumns = "1fr";
+        section.style.rowGap = "32px"; // espaçamento entre cards
+
+        const h2 = document.createElement("h2");
+        h2.className = "u-mb-16";
+        h2.style.textAlign = "center";
+        h2.style.fontWeight = "bold";
+        h2.style.fontSize = "1.5rem";
+        h2.textContent = title;
+        section.appendChild(h2);
+        dashboards.appendChild(section);
+        return section;
+    }
+
+    function createCanvasCard(parentEl, heightPx = 560) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.style.marginBottom = "16px"; // margem adicional
+        const body = document.createElement("div");
+        body.className = "card__content";
+        body.style.height = `${heightPx}px`;
+        body.style.position = "relative";
+        const canvas = document.createElement("canvas");
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        body.appendChild(canvas);
+        card.appendChild(body);
+        parentEl.appendChild(card);
+        return canvas;
+    }
+
+    // util: moda (nome mais frequente)
+    function mode(arr) {
+        const m = new Map();
+        arr.forEach(v => { if (v) m.set(v, (m.get(v)||0)+1); });
+        let best=null, bestC=-1;
+        for (const [k,c] of m.entries()) if (c>bestC){best=k;bestC=c;}
+        return best;
+    }
+
+    // Verifica se há pelo menos um número válido em qualquer nível/ano
+    function hasAnyData(levels, category) {
+        const keys = (category === "cow") ? ["country","region","state"] : ["municipality"];
+        for (const k of keys) {
+            const items = (levels && levels[k]) || [];
+            for (const it of items) {
+                if (Array.isArray(it.values) && it.values.some(v => Number.isFinite(+v))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function showEmptyMessage() {
+        const div = document.createElement("div");
+        div.className = "callout callout--warning u-mt-16";
+        div.textContent = "Não há dados para gerar os dashboards com os filtros selecionados.";
+        dashboards.appendChild(div);
+    }
+
+    // Constrói séries a partir de [{year, values, entities?}, ...]
+    function seriesFromValues(items) {
+        const sorted = items.slice().sort((a,b)=>a.year-b.year);
+        const years = sorted.map(it => it.year);
+        const maxSeries = sorted.reduce((mx,it)=>Math.max(mx,(it.values||[]).length),0);
+
+        // nomes a partir de entities
+        let inferredNames = Array(maxSeries).fill(null);
+        if (sorted.some(it => Array.isArray(it.entities))) {
+            for (let j=0;j<maxSeries;j++) {
+                const names = sorted.map(it => (it.entities||[])[j]||null);
+                inferredNames[j] = mode(names);
+            }
+        }
+
+        const datasets = [];
+        for (let j=0;j<maxSeries;j++) {
+            const data = sorted.map(it=>{
+                const val = (it.values||[])[j];
+                const num = Number(val);
+                return Number.isFinite(num)?num:null;
+            });
+            datasets.push({
+                label: inferredNames[j] || `Série ${j+1}`,
+                data,
+                borderColor: COLORS.linePalette[j%COLORS.linePalette.length],
+                backgroundColor: "transparent",
+                borderWidth: 2,
+                tension: 0.2,
+                pointRadius: 2,
+                spanGaps: true
+            });
+        }
+        return {years,datasets};
+    }
+
+    // COW: linhas (sem soma), legenda à direita para região/estado
+    function renderCow(levels, styleKey) {
+        const section = makeSection("Séries temporais");
+        const titles = { country:"País", region:"Região", state:"Estado" };
+
+        ["country","region","state"].forEach(level=>{
+            const items=(levels&&levels[level])||[];
+            if(!items.length) return;
+
+            const {years,datasets}=seriesFromValues(items);
+            const canvas=createCanvasCard(section, HEIGHTS.line);
+            const ctx=canvas.getContext("2d");
+
+            const legendOnRight = (level === "region" || level === "state");
+
+            const chart=new Chart(ctx,{
+                type:"line",
+                data:{labels:years,datasets},
+                options:{
+                    responsive:true,
+                    maintainAspectRatio:false,
+                    plugins:{
+                        title:{
+                            display:true,
+                            text:`${titles[level]} — ${styleKey}`,
+                            align:"center",
+                            font:{weight:"bold",size:18}
+                        },
+                        legend:{
+                            display:true,
+                            position: legendOnRight ? "right" : "top",
+                            align: "start",
+                            labels:{ usePointStyle:true, boxWidth:10, boxHeight:10, padding:12 }
+                        }
+                    },
+                    scales:{
+                        x:{title:{display:true,text:"Ano"}},
+                        y:{title:{display:true,text:"Valor"},beginAtZero:true}
+                    }
+                }
+            });
+            chartInstances.push(chart);
+        });
+    }
+
+    // NÃO COW: Top N por ano (barras horizontais)
+    function renderNonCow(levels, styleKey, topN) {
+        const section = makeSection("Top N por ano (Municipality)");
+        const items=(levels&&levels.municipality)||[];
+        if(!items.length){
+            const p=document.createElement("p");
+            p.textContent="Nenhum dado encontrado.";
+            section.appendChild(p);
+            return;
+        }
+
+        items.sort((a,b)=>a.year-b.year).forEach(item=>{
+            const year=item.year;
+            const raw=(item.values||[]);
+            const ents=(item.entities||[]);
+            let pairs=raw.map((v,i)=>({name:ents[i]||`Município ${i+1}`,val:+v}));
+            pairs=pairs
+                .filter(p=>Number.isFinite(p.val))
+                .sort((a,b)=>b.val-a.val);
+
+            if (Number.isFinite(topN) && topN>0) pairs = pairs.slice(0, topN);
+
+            // se este ano não tiver nenhum valor válido, pula o gráfico
+            if (pairs.length === 0) return;
+
+            const labels=pairs.map(p=>p.name);
+            const values=pairs.map(p=>p.val);
+
+            const dynamicHeight = Math.max(
+                HEIGHTS.barMin,
+                labels.length * HEIGHTS.barPerItem + HEIGHTS.barPadding
+            );
+
+            const canvas=createCanvasCard(section, dynamicHeight);
+            const ctx=canvas.getContext("2d");
+            const chart=new Chart(ctx,{
+                type:"bar",
+                data:{labels,datasets:[{
+                    label:`Top ${labels.length} — ${year}`,
+                    data:values,
+                    backgroundColor:COLORS.barFill,
+                    borderColor:COLORS.barBorder
+                }]},
+                options:{
+                    indexAxis:"y",
+                    responsive:true,
+                    maintainAspectRatio:false,
+                    plugins:{
+                        title:{
+                            display:true,
+                            text:`Ano ${year} — ${styleKey}`,
+                            align:"center",
+                            font:{weight:"bold",size:18}
+                        },
+                        legend:{display:false}
+                    },
+                    scales:{
+                        x:{title:{display:true,text:"Valor"}},
+                        y:{title:{display:true,text:"Município"}}
+                    }
+                }
+            });
+            chartInstances.push(chart);
+        });
+    }
+
+    function updateTitle(category,style){
+        const labels={
+            cow:"Vacas",goat:"Cabras",sheep:"Ovelhas",
+            milking:"Ordenha",production:"Produção",
+            milking_density:"Densidade de ordenha",
+            production_density:"Densidade de produção",
+            productivity:"Produtividade"
+        };
+        pageTitle.textContent=`Dashboards — ${labels[category]||category} (${labels[style]||style})`;
+    }
+
+    // mostra/oculta o select TopN conforme categoria
+    function toggleTopN() {
+        if (categoryEl.value === "cow") {
+            topNEl.style.display = "none";
+        } else {
+            topNEl.style.display = "";
+        }
+    }
+
+    // eventos de UI
+    categoryEl.addEventListener("change", toggleTopN);
+    toggleTopN(); // estado inicial
+
+    // submit
+    form.addEventListener("submit",function(e){
+        e.preventDefault();
+        const category = categoryEl.value;
+        const style = styleEl.value;
+        const topN = parseInt(topNEl.value, 10) || 10;
+
+        clearDashboards(); updateTitle(category,style);
+
+        fetch("/dashboard_cow/",{
+            method:"POST",
+            headers:{"Content-Type":"application/json", "X-CSRFToken":document.querySelector('meta[name="csrf-token"]').content},
+            body:JSON.stringify({category,style})
+        })
+        .then(async (r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+        })
+        .then(data=>{
+            if (data.status !== "ok") throw new Error(data.message || "Resposta inválida.");
+
+            // >>> Validação global: sem dados úteis -> mostra callout e sai
+            if (!hasAnyData(data.levels, category)) {
+                showEmptyMessage();
+                return;
+            }
+
+            if (category === "cow") renderCow(data.levels, style);
+            else renderNonCow(data.levels, style, topN);
+        })
+        .catch(err=>{
+            const div=document.createElement("div");
+            div.className="callout callout--danger u-mt-16";
+            div.textContent=`Erro: ${err.message}`;
+            dashboards.appendChild(div);
+        });
+    });
+
+    // reset
+    form.addEventListener("reset",()=>setTimeout(()=>{
+        clearDashboards();
+        pageTitle.textContent="Dashboards — Vacas";
+        toggleTopN();
+    },0));
+});
+</script>
+{% endblock %}

@@ -1,0 +1,419 @@
+{# templates/static_maps.html #}
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page__container page">
+  <h1 class="page__title">Mapas em Imagens</h1>
+
+  <!-- Formulário de seleção -->
+  <div class="card form-card form-card--roomy">
+    <form id="maps-form" class="form-two-col" autocomplete="off">
+      <div class="group">
+        <label for="sel-category" class="form__label">Categoria</label>
+        <select id="sel-category" class="form__select" required>
+          <option value="" selected disabled>Escolha a categoria…</option>
+          {% for category in files.keys() %}
+            <option value="{{ category }}">{{ category }}</option>
+          {% endfor %}
+        </select>
+        <p class="form__hint">Ex.: cabras, vacas…</p>
+      </div>
+
+      <div class="group">
+        <label for="sel-subcategory" class="form__label">Subcategoria</label>
+        <select id="sel-subcategory" class="form__select" disabled required>
+          <option value="" selected disabled>Selecione a categoria…</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label for="sel-year" class="form__label">Ano</label>
+        <select id="sel-year" class="form__select" disabled required>
+          <option value="" selected disabled>Selecione a subcategoria…</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label for="sel-file" class="form__label">Arquivo</label>
+        <select id="sel-file" class="form__select" disabled required>
+          <option value="" selected disabled>Selecione o ano…</option>
+        </select>
+        <p class="form__hint">Ex.: AC, BA, SP…</p>
+      </div>
+    </form>
+  </div>
+
+  <!-- Resumo + Timeline -->
+  <div id="selection-summary" class="card form-card form-card--roomy" style="display:none;">
+    <h2 class="page__subtitle">Sua seleção</h2>
+    <p id="selection-text" class="page__text"></p>
+
+    <hr class="form__divider form__divider--lg">
+
+    <h3 class="page__subtitle">Linha do tempo</h3>
+    <div id="timeline" class="timeline"></div>
+
+    <div id="warn-file-missing" class="alert alert--warn" style="display:none; margin-top:12px;">
+      O arquivo selecionado não existe para o ano escolhido. Mantido do ano anterior — escolha um arquivo disponível neste ano, se desejar.
+    </div>
+  </div>
+
+  <!-- Visualização da imagem -->
+  <div id="poster-view" class="card form-card form-card--roomy" style="display:none;">
+    <h2 class="page__subtitle">Visualização</h2>
+
+    <!-- NEW: barra de ações -->
+    <div class="poster-actions" aria-label="Ações da imagem">
+      <button type="button" id="btn-fullscreen" class="btn" disabled title="Ver em tela cheia">
+        🔍 Tela cheia
+      </button>
+      <a id="btn-download" class="btn" href="#" download title="Baixar imagem" aria-disabled="true">⬇️ Baixar</a>
+    </div>
+
+    <figure class="poster-figure">
+      <img id="poster-img" class="poster-img" src="" alt="Mapa selecionado">
+      <figcaption id="poster-caption" class="poster-caption"></figcaption>
+    </figure>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+
+  <!-- ===== CSS específico desta página ===== -->
+  <style>
+    /* Timeline */
+    .timeline { width:100%; }
+    .timeline__wrap{
+      display:flex; flex-wrap:wrap; gap:.5rem;
+      padding:.25rem 0;
+    }
+    .timeline__item{
+      appearance:none;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      padding:.4rem .6rem;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:600;
+      box-shadow:0 1px 0 rgba(0,0,0,.02);
+      transition:border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+    }
+    .timeline__item:hover{ border-color:var(--c-primary); box-shadow:0 0 0 4px rgba(3,105,161,.12); }
+    .timeline__item.is-selected{
+      border-color:var(--c-brand);
+      background:var(--c-accent);
+    }
+
+    /* Alertas */
+    .alert{
+      border:1px solid #f59e0b; background:#fff7ed; color:#92400e;
+      padding:.625rem .75rem; border-radius:10px; font-weight:600;
+    }
+
+    /* NEW: barra de ações */
+    .poster-actions{
+      display:flex; gap:.5rem; margin-bottom:.75rem; flex-wrap:wrap;
+    }
+    .btn{
+      appearance:none;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      padding:.45rem .7rem;
+      border-radius:10px;
+      font-weight:600;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      gap:.35rem;
+      box-shadow:0 1px 0 rgba(0,0,0,.02);
+      transition:border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+    }
+    .btn:hover{ border-color:var(--c-primary); box-shadow:0 0 0 4px rgba(3,105,161,.12); }
+    .btn[disabled], .btn[aria-disabled="true"]{ opacity:.5; cursor:not-allowed; }
+
+    /* Poster (imagem) — **40%** da visualização (viewport) */
+    .poster-figure{ margin:0; text-align:center; }
+    .poster-img{
+      width:40vw;      /* REDUZIDO de 60vw para 40vw */
+      max-width:100%;
+      height:auto;
+      border:1px solid #e5e7eb;
+      border-radius:12px;
+      background:#fff;
+    }
+    .poster-caption{
+      margin-top:.5rem;
+      color:var(--c-muted);
+      font-size:.95rem;
+    }
+  </style>
+
+  <!-- ===== JS da página ===== -->
+  <script>
+    // Dados do backend: {categoria: {subcategoria: {ano: [arquivos_png]}}}
+    const DATA = {{ files|tojson }};
+
+    // Elementos
+    const selCategory = document.getElementById('sel-category');
+    const selSubcat   = document.getElementById('sel-subcategory');
+    const selYear     = document.getElementById('sel-year');
+    const selFile     = document.getElementById('sel-file');
+
+    const summaryBox    = document.getElementById('selection-summary');
+    const selectionText = document.getElementById('selection-text');
+    const timelineWrap  = document.getElementById('timeline');
+    const warnMissing   = document.getElementById('warn-file-missing');
+
+    const posterView    = document.getElementById('poster-view');
+    const posterImg     = document.getElementById('poster-img');
+    const posterCaption = document.getElementById('poster-caption');
+
+    // NEW: botões
+    const btnFullscreen = document.getElementById('btn-fullscreen');
+    const btnDownload   = document.getElementById('btn-download');
+
+    // Base para PNGs servidos via rota /poster/
+    const BASE_PATH = "/poster/";
+
+    // Estado atual
+    let current = { category:null, subcat:null, year:null, file:null };
+
+    // ===== Helpers =====
+    function toTitleCase(str){
+      return String(str)
+        .toLowerCase()
+        .split(/[\s_\-]+/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    }
+    function stripPng(name){ return String(name).replace(/\.png$/i, ''); }
+    function ensurePng(name){ return /\.png$/i.test(name) ? name : (name + ".png"); }
+
+    function resetSelect(select, placeholder, disable = true) {
+      select.innerHTML = '';
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = placeholder;
+      opt.disabled = true;
+      opt.selected = true;
+      select.appendChild(opt);
+      select.disabled = !!disable;
+    }
+
+    function fillSelect(select, values, {label=(v)=>v, value=(v)=>v} = {}) {
+      for (const v of values) {
+        const opt = document.createElement('option');
+        opt.value = value(v);
+        opt.textContent = label(v);
+        select.appendChild(opt);
+      }
+      select.disabled = values.length === 0;
+    }
+
+    function ensureSelectedFileOption(selectEl, fileValue) {
+      if (!fileValue) return;
+      const exists = Array.from(selectEl.options).some(o => o.value === fileValue);
+      if (!exists) {
+        const opt = document.createElement('option');
+        opt.value = fileValue;
+        opt.textContent = toTitleCase(stripPng(fileValue)) + ' (indisponível neste ano)';
+        opt.dataset.missing = "1";
+        selectEl.appendChild(opt);
+      }
+    }
+
+    function buildUrl(category, subcat, year, file){
+      if (!category || !subcat || !year || !file) return '';
+      const safeFile = ensurePng(file);
+      return `${BASE_PATH}${encodeURIComponent(category)}/${encodeURIComponent(subcat)}/${encodeURIComponent(year)}/${encodeURIComponent(safeFile)}`;
+    }
+
+    function renderTimeline(years, selectedYear){
+      timelineWrap.innerHTML = '';
+      if (!years || years.length === 0){
+        timelineWrap.textContent = 'Sem anos disponíveis.';
+        return;
+      }
+      const sorted = years.map(Number).filter(n => !Number.isNaN(n)).sort((a,b)=>a-b);
+      const wrap = document.createElement('div');
+      wrap.className = 'timeline__wrap';
+      for (const y of sorted){
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'timeline__item';
+        btn.textContent = y;
+        if (String(y) === String(selectedYear)) btn.classList.add('is-selected');
+        btn.addEventListener('click', () => {
+          selYear.value = String(y);
+          selYear.dispatchEvent(new Event('change'));
+        });
+        wrap.appendChild(btn);
+      }
+      timelineWrap.appendChild(wrap);
+    }
+
+    function updateSummary(){
+      const { category:cat, subcat:sub, year:yr, file:fl } = current;
+      if (!cat) { summaryBox.style.display = 'none'; return; }
+
+      const parts = [];
+      if (cat) parts.push(`Categoria: <b>${toTitleCase(cat)}</b>`);
+      if (sub) parts.push(`Subcategoria: <b>${toTitleCase(sub)}</b>`);
+      if (yr)  parts.push(`Ano: <b>${yr}</b>`);
+      if (fl)  parts.push(`Arquivo: <b>${toTitleCase(stripPng(fl))}</b>`);
+      selectionText.innerHTML = parts.join(' · ');
+      summaryBox.style.display = 'block';
+
+      let years = [];
+      if (cat && sub && DATA[cat]?.[sub]) {
+        years = Object.keys(DATA[cat][sub] || {});
+      } else if (cat && DATA[cat]) {
+        const set = new Set();
+        for (const sc of Object.values(DATA[cat])) {
+          for (const y of Object.keys(sc || {})) set.add(y);
+        }
+        years = Array.from(set);
+      }
+      renderTimeline(years, yr);
+    }
+
+    function updatePoster(){
+      const url = buildUrl(current.category, current.subcat, current.year, current.file);
+      if (url){
+        posterImg.src = url;
+        posterImg.alt = `Mapa ${toTitleCase(stripPng(current.file))} (${current.year})`;
+        posterCaption.textContent = `${toTitleCase(current.category)} · ${toTitleCase(current.subcat)} · ${current.year} · ${toTitleCase(stripPng(current.file))}`;
+        posterView.style.display = 'block';
+
+        // NEW: habilitar ações e configurar download
+        btnFullscreen.disabled = false;
+        btnDownload.href = url;
+        btnDownload.setAttribute('aria-disabled', 'false');
+        // nome do arquivo para download
+        const fname = `${current.category}_${current.subcat}_${current.year}_${ensurePng(current.file)}`.replace(/\s+/g,'-');
+        btnDownload.setAttribute('download', fname);
+      } else {
+        posterImg.src = '';
+        posterCaption.textContent = '';
+        posterView.style.display = 'none';
+
+        // NEW: desabilitar ações
+        btnFullscreen.disabled = true;
+        btnDownload.href = '#';
+        btnDownload.setAttribute('aria-disabled', 'true');
+        btnDownload.removeAttribute('download');
+      }
+    }
+
+    // ===== Handlers =====
+    function onCategoryChange() {
+      current.category = selCategory.value;
+      current.subcat = null; current.year = null; current.file = null;
+
+      const subcats = current.category && DATA[current.category] ? Object.keys(DATA[current.category]) : [];
+      resetSelect(selSubcat, 'Escolha a subcategoria…', false);
+      resetSelect(selYear, 'Selecione a subcategoria…', true);
+      resetSelect(selFile, 'Selecione o ano…', true);
+
+
+      fillSelect(selSubcat, subcats, { label:(v)=>toTitleCase(v), value:(v)=>v });
+
+      warnMissing.style.display = 'none';
+      updateSummary(); updatePoster();
+
+    }
+
+    function onSubcategoryChange() {
+      current.subcat = selSubcat.value;
+      current.year = null; current.file = null;
+
+      const years = current.category && current.subcat && DATA[current.category]?.[current.subcat]
+        ? Object.keys(DATA[current.category][current.subcat]).sort()
+        : [];
+
+      resetSelect(selYear, 'Escolha o ano…', false);
+      resetSelect(selFile, 'Selecione o ano…', true);
+
+      fillSelect(selYear, years, { label:(v)=>v, value:(v)=>v });
+
+      warnMissing.style.display = 'none';
+      updateSummary(); updatePoster();
+    }
+
+    function onYearChange() {
+      current.year = selYear.value;
+
+      const prevFile = current.file;
+
+      const files = current.category && current.subcat && current.year && DATA[current.category]?.[current.subcat]?.[current.year]
+        ? DATA[current.category][current.subcat][current.year]
+        : [];
+
+      resetSelect(selFile, 'Escolha o arquivo…', false);
+      fillSelect(selFile, files, { label:(v)=>toTitleCase(stripPng(v)), value:(v)=>v });
+
+      if (prevFile) {
+        if (files.includes(prevFile)) {
+          selFile.value = prevFile;
+          current.file = prevFile;
+          warnMissing.style.display = 'none';
+        } else {
+          ensureSelectedFileOption(selFile, prevFile);
+          selFile.value = prevFile;
+          current.file = prevFile;
+          warnMissing.style.display = 'block';
+        }
+        updateSummary(); updatePoster();
+      } else {
+        warnMissing.style.display = 'none';
+        updateSummary(); updatePoster();
+      }
+    }
+
+    function onFileChange() {
+      current.file = selFile.value || null;
+      warnMissing.style.display = 'none';
+      updateSummary(); updatePoster();
+    }
+
+    // Mostra aviso caso a imagem retorne erro (404 etc.)
+    posterImg.addEventListener('error', () => {
+      warnMissing.style.display = 'block';
+    });
+
+    // NEW: Tela cheia com Fullscreen API
+    function enterFullscreen(){
+      const el = posterImg; // você pode trocar para posterView se preferir
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      else if (el.msRequestFullscreen) el.msRequestFullscreen();
+    }
+    btnFullscreen.addEventListener('click', () => {
+      if (!btnFullscreen.disabled) enterFullscreen();
+    });
+
+    // ===== Inicialização =====
+function init() {
+  resetSelect(selSubcat, 'Selecione a categoria…', true);
+  resetSelect(selYear, 'Selecione a subcategoria…', true);
+  resetSelect(selFile, 'Selecione o ano…', true);
+
+  // NÃO repopular categorias; elas já vieram do servidor.
+  // Apenas capitaliza as opções existentes (exceto o placeholder).
+  Array.from(selCategory.options).forEach(o => {
+    if (o.value) o.textContent = toTitleCase(o.textContent);
+  });
+
+  selCategory.addEventListener('change', onCategoryChange);
+  selSubcat  .addEventListener('change', onSubcategoryChange);
+  selYear    .addEventListener('change', onYearChange);
+  selFile    .addEventListener('change', onFileChange);
+}
+
+
+    init();
+  </script>
+{% endblock %}

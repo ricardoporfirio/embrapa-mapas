@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ title }} ({{ year }})</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#ffffff;
+      --text:#111;
+      --muted:#555;
+      --border:#d6d6d6;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif}
+    .page{max-width:1200px;margin:24px auto 32px; padding:0 16px}
+    header{text-align:center;margin-bottom:8px}
+    header h1{font-size:36px;font-weight:800;margin:0 0 4px}
+    header .subtitle{font-size:16px;color:var(--muted);}
+    .layout{
+      display:grid;
+      grid-template-columns: 1fr 300px; /* mapa | legenda */
+      gap: 16px;
+      align-items:start;
+      margin-top: 12px;
+    }
+    .map-card{
+      position:relative;
+      border:1px solid var(--border);
+      background:#f7f7f7;
+      padding:12px;
+    }
+    .map-card img{
+      width:100%; height:auto; display:block; background:#e9eef3;
+      border:1px solid var(--border);
+    }
+    /* seta do norte (SVG posicionado no canto superior direito do quadro do mapa) */
+    .north{
+      position:absolute; right:20px; top:20px; width:28px; height:60px; display:flex; align-items:center; justify-content:center;
+      background: rgba(255,255,255,.8); border:1px solid var(--border); border-radius:6px; padding:4px;
+    }
+    .north svg{display:block; width:16px; height:auto}
+    .north .n{font-size:12px; font-weight:700; margin-bottom:2px; text-align:center}
+
+    /* barra de escala (decorativa) */
+    .scalebar{
+      position:absolute; left:50%; bottom:16px; transform:translateX(-50%);
+      display:flex; flex-direction:column; align-items:center; gap:6px;
+      background:rgba(255,255,255,.85); padding:6px 8px; border:1px solid var(--border); border-radius:6px;
+    }
+    .scalebar .bar{display:flex; width:220px; height:12px; border:1px solid #000}
+    .scalebar .bar span{flex:1}
+    .scalebar .bar span:nth-child(odd){background:#000}
+    .scalebar .labels{display:flex; justify-content:space-between; width:220px; font-size:12px}
+    .scalebar .labels .unit{font-weight:600}
+
+    /* legenda */
+    .legend{
+      border:1px solid var(--border); padding:14px 14px 12px; background:#fff;
+    }
+    .legend h2{margin:0 0 2px; font-size:20px}
+    .legend .unit{color:#333; font-size:13px}
+    .legend .year{margin:8px 0 10px; font-size:14px}
+    .legend ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px}
+    .legend li{display:flex; align-items:center; gap:10px; font-size:14px}
+    .swatch{width:22px; height:16px; border:1px solid #333}
+    .note{margin-top:10px; font-size:12px; color:#444}
+
+    /* rodapé (texto e logos) */
+    .footer{
+      display:grid; grid-template-columns: 1fr 300px; gap:16px; margin-top:18px; align-items:end;
+    }
+    .foot-text{
+      font-size:13px; color:#333; line-height:1.35; white-space:pre-line;
+    }
+    .logos{display:flex; gap:18px; align-items:center; justify-content:flex-end}
+    .logos img{height:46px; width:auto; object-fit:contain}
+    @media print{
+      .page{margin:0; padding:0}
+      .north,.scalebar{background:#fff}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>{{ title }} ({{ year }})</h1>
+      <div class="subtitle">{{ subtitle }}</div>
+    </header>
+
+    <div class="layout">
+      <!-- MAPA -->
+      <div class="map-card">
+        <!-- seta do norte -->
+        <div class="north" aria-label="Norte">
+          <div class="n">N</div>
+          <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+            <polygon points="12,2 4,18 12,14 20,18" fill="#000"/>
+          </svg>
+        </div>
+
+        <img src="{{ image_src }}" alt="{{ alt }}" />
+
+        <!-- barra de escala (rótulos replicam o layout do exemplo) -->
+        <div class="scalebar" aria-label="barra de escala">
+          <div class="bar">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="labels">
+            <span>0</span>
+            <span>500</span>
+            <span class="unit">1.000 km</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- LEGENDA -->
+      <aside class="legend">
+        <h2>{{ legend_title }}</h2>
+        {% if legend_unit %}<div class="unit">{{ legend_unit }}</div>{% endif %}
+        <div class="year"><strong>Ano:</strong> {{ year }}</div>
+
+        <ul>
+          {% for item in legend_items %}
+          <li>
+            <span class="swatch" style="background: {{ item.color }};"></span>
+            <span>{{ item.label }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+
+        {% if legend_note %}
+        <div class="note">{{ legend_note }}</div>
+        {% endif %}
+      </aside>
+    </div>
+
+    <!-- RODAPÉ -->
+    <div class="footer">
+      <div class="foot-text">
+{{ foot_left_text }}
+      </div>
+      <div class="logos">
+        {% if logo1_src %}<img src="{{ logo1_src }}" alt="Logo 1" />{% endif %}
+        {% if logo2_src %}<img src="{{ logo2_src }}" alt="Logo 2" />{% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+venv/
+dataframes/
+imagens/
+mapas/
+src/core/geobr_shapes/.cache/
+
+.venv/
+.env
+runtime/
+poster/
+__pycache__/
+*.pyc
